@@ -6,6 +6,8 @@
 #include <time.h>
 #include <math.h>
 
+#define BUF_LEN 5
+
 #define debug_print(fmt, ...) \
             do { if (DEBUG) fprintf(stdout, fmt, ##__VA_ARGS__); } while (0)
 
@@ -21,6 +23,23 @@ int least_sign_bit(int number)
     }
 
     return lsb;
+}
+
+int uncutten_print(int rank, int *mass, int size, char *start_string)
+{
+    int index;
+    char *tmp_buf;
+    
+    tmp_buf = malloc(size * BUF_LEN);
+    
+    memset(tmp_buf, '\0', size * BUF_LEN);
+    for(index = 0; index < size; index ++) {
+	sprintf(tmp_buf, "%s %d", tmp_buf, mass[index]);
+    }
+
+    debug_print("rank - %d %s = %s\n", rank, start_string, tmp_buf);
+    free(tmp_buf);
+    return 0;
 }
 
 int* bruck_allgather(int rank,int node_count, int *block, int block_size, int *buffer_size)
@@ -53,10 +72,7 @@ int* bruck_allgather(int rank,int node_count, int *block, int block_size, int *b
     debug_print("rank - %d buffer= %p\n",rank, buffer);
     memcpy(buffer, block, block_size * sizeof(int));
 
-    debug_print("rank - %d buffer = ", rank);
-    for(index = 0; index < block_size; index++)
-	debug_print("%d ", buffer[index]);
-    debug_print("\n");
+    uncutten_print(rank, buffer, block_size, "buffer");
 
     *buffer_size = block_size;
     for (step = 0; step < steps; step++){
@@ -80,10 +96,7 @@ int* bruck_allgather(int rank,int node_count, int *block, int block_size, int *b
 	MPI_Irecv(buffer_recv, recv_size, MPI_INT, recv_rank, 0, MPI_COMM_WORLD, &req[1]);
 	MPI_Waitall(2, req, status);
 	//debug_print("rank - %d error0 = %d error1 = %d\n", rank, status[0].MPI_ERROR, status[1].MPI_ERROR);
-	debug_print("rank - %d recv_buffer = ", rank);
-	for (index = 0; index < recv_size; index++)
-	    debug_print("%d ", buffer_recv[index]);
-	debug_print("\n");
+	uncutten_print(rank, buffer_recv, recv_size, "recv_buffer");
 
 	if (lsb & (1 << step)) {
 	    offset = *buffer_size;
@@ -106,11 +119,15 @@ int* bruck_allgather(int rank,int node_count, int *block, int block_size, int *b
 	debug_print("rank - %d offset<>0 and = %d\n", rank, offset);
 	send_rank = (rank + node_count - (1 << steps)) % node_count;
 	recv_rank = (rank + (1 << steps)) % node_count;
-	MPI_Send(buffer, offset, MPI_INT, send_rank, 0, MPI_COMM_WORLD);
-	MPI_Probe(recv_rank, 0, MPI_COMM_WORLD, &status[0]);
+	MPI_Isend(buffer, offset, MPI_INT, send_rank, 0, MPI_COMM_WORLD, &req[0]);
+	flag = 0;
+	while	(!flag) {
+	    MPI_Iprobe(recv_rank, 0, MPI_COMM_WORLD, &flag, &status[0]);
+	}
 	MPI_Get_count(&status[0], MPI_INT, &recv_size);
 	buffer_recv = malloc(recv_size * sizeof(int));
-	MPI_Recv(buffer_recv, recv_size,MPI_INT, recv_rank, 0, MPI_COMM_WORLD, &status[0]);
+	MPI_Irecv(buffer_recv, recv_size,MPI_INT, recv_rank, 0, MPI_COMM_WORLD, &req[1]);
+	MPI_Waitall(2, req, status);
 	buffer = realloc(buffer, (*buffer_size + recv_size) * sizeof(int));
 	memcpy(buffer + (*buffer_size), buffer_recv, recv_size * sizeof(int));
 	*buffer_size = *buffer_size + recv_size;
@@ -144,18 +161,12 @@ int main(int argc, char **argv)
     for(index = 0; index < block_size; index ++)
 	block[index] = rank;
 
-    printf("rank %d - block = ", rank);
-    for (index = 0;index < block_size; index++)
-	printf("%d ", (int) block[index]);
-    printf("\n");
+    uncutten_print(rank, block, block_size, "block");
 
     debug_print("rank - %d buffer = %p\n", rank, buffer);
     buffer = bruck_allgather(rank, size, block, block_size, &buffer_size);
 
-    printf("rank - %d rezult buffer = ", rank);
-    for (index = 0; index < buffer_size; index ++)
-	printf("%d ", buffer[index]);
-    printf("\n");
+    uncutten_print(rank, buffer, buffer_size, "rezult buffer");
     
     free(block);
     free(buffer);
