@@ -69,16 +69,17 @@ int* bruck_allgather(int rank,int node_count, int *block, int block_size, int *b
 
 	send_rank = (rank + node_count - (1 << step)) % node_count;
 	recv_rank = (rank + (1 << step)) % node_count;
-	MPI_Send(buffer, *buffer_size, MPI_INT, send_rank, 0, MPI_COMM_WORLD);
-	//while(!flag){
-	//    MPI_Iprobe(recv_rank, 0, MPI_COMM_WORLD, &flag, &status[0]);
-	//}
-	MPI_Probe(recv_rank, 0, MPI_COMM_WORLD, &status[0]);
+	MPI_Isend(buffer, *buffer_size, MPI_INT, send_rank, 0, MPI_COMM_WORLD, &req[0]);
+	flag = 0;
+	while(!flag){
+	    MPI_Iprobe(recv_rank, 0, MPI_COMM_WORLD, &flag, &status[0]);
+	}
+	//MPI_Probe(recv_rank, 0, MPI_COMM_WORLD, &status[0]);
 	MPI_Get_count(&status[0], MPI_INT, &recv_size);
 	buffer_recv = malloc(recv_size * sizeof(int));
-	MPI_Recv(buffer_recv, recv_size, MPI_INT, recv_rank, 0, MPI_COMM_WORLD, &status[0]);
-	//MPI_Waitall(2, req, status);
-	debug_print("rank - %d error0 = %d error1 = %d\n", rank, status[0].MPI_ERROR, status[1].MPI_ERROR);
+	MPI_Irecv(buffer_recv, recv_size, MPI_INT, recv_rank, 0, MPI_COMM_WORLD, &req[1]);
+	MPI_Waitall(2, req, status);
+	//debug_print("rank - %d error0 = %d error1 = %d\n", rank, status[0].MPI_ERROR, status[1].MPI_ERROR);
 	debug_print("rank - %d recv_buffer = ", rank);
 	for (index = 0; index < recv_size; index++)
 	    debug_print("%d ", buffer_recv[index]);
